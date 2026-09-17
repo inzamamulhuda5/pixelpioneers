@@ -25,9 +25,10 @@ import {
   bookAppointment,
   calculatePricingBreakdown,
   getAvailableDates,
-  getTimeSlotsForDate,
+  fetchTimeSlotsForDate,
   temporarilyReserveSlot,
   releaseReservation,
+  subscribeToSlotUpdates,
 } from '../../services/bookingStore';
 
 interface BookingModalProps {
@@ -78,23 +79,38 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const pricing = calculatePricingBreakdown(doctor.consultationFee, triageCategory);
 
   // Load slots when date or doctor changes
-  const refreshSlots = () => {
-    const currentSlots = getTimeSlotsForDate(doctor.id, clinic.id, selectedDate);
+  const refreshSlots = async () => {
+    const currentSlots = await fetchTimeSlotsForDate(doctor.id, clinic.id, selectedDate);
     setSlots(currentSlots);
+
+    // If user already holds a slot, ensure it is still synchronized
+    setSelectedSlot((prev) => {
+      if (!prev) return null;
+      const matched = currentSlots.find((s) => s.id === prev.id);
+      if (!matched) return null;
+      if (!matched.heldByMe && matched.status.toUpperCase() !== 'AVAILABLE') {
+        setIsHoldActive(false);
+        setBookingError('Your temporary hold expired or was released. Please select an available slot.');
+        return null;
+      }
+      return matched;
+    });
+
     return currentSlots;
   };
 
   useEffect(() => {
     if (!isOpen) return;
-    const currentSlots = refreshSlots();
+    refreshSlots();
 
-    // Auto-select first available slot if none selected yet
-    if (!selectedSlot) {
-      const firstAvailable = currentSlots.find((s) => s.status.toUpperCase() === 'AVAILABLE');
-      if (firstAvailable) {
-        handleSelectSlot(firstAvailable);
-      }
-    }
+    // Real-time synchronization across devices (SSE + fast polling fallback)
+    const unsubscribe = subscribeToSlotUpdates(doctor.id, selectedDate, () => {
+      refreshSlots();
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [isOpen, selectedDate, doctor.id, clinic.id]);
 
   // Keep concern updated if triage assessment updates
@@ -126,9 +142,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   }, [isHoldActive, secondsRemaining]);
 
   // Clean up hold when closing modal
-  const handleClose = () => {
+  const handleClose = async () => {
     if (selectedSlot) {
-      releaseReservation(selectedSlot.id);
+      await releaseReservation(selectedSlot.id);
     }
     setIsHoldActive(false);
     setSelectedSlot(null);
@@ -146,22 +162,31 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   };
 
   // Slot selection handler: transitions slot to HELD
-  const handleSelectSlot = (slot: TimeSlot) => {
+  const handleSelectSlot = async (slot: TimeSlot) => {
     const statusUpper = slot.status.toUpperCase();
     if (statusUpper !== 'AVAILABLE' && !slot.heldByMe) return;
 
-    const res = temporarilyReserveSlot(slot.id, 300);
+    if (selectedSlot && selectedSlot.id !== slot.id) {
+      await releaseReservation(selectedSlot.id);
+    }
+
+    const res = await temporarilyReserveSlot(slot.id, 300, {
+      doctorId: doctor.id,
+      date: selectedDate,
+      time: slot.time,
+    });
     if (!res.success) {
       setBookingError(res.message || 'Slot could not be held. Please choose another.');
-      refreshSlots();
+      await refreshSlots();
       return;
     }
 
     setSelectedSlot(slot);
-    setSecondsRemaining(300);
+    const remaining = res.heldUntil ? Math.max(1, Math.round((res.heldUntil - Date.now()) / 1000)) : 300;
+    setSecondsRemaining(remaining);
     setIsHoldActive(true);
     setBookingError(null);
-    refreshSlots();
+    await refreshSlots();
   };
 
   // Step 2 Form Validation
@@ -223,7 +248,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     setBookingError(null);
 
     try {
-      const newAppointment = bookAppointment({
+      const newAppointment = await bookAppointment({
         doctor,
         clinic,
         specialty: doctor.specialty,
@@ -245,7 +270,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         err.message || 'This slot was just taken by another patient. Please select a different time slot.'
       );
       setCurrentStep('slots');
-      refreshSlots();
+      await refreshSlots();
       setSelectedSlot(null);
       setIsHoldActive(false);
     } finally {

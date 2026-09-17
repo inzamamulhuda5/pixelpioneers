@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
@@ -223,6 +224,332 @@ Rules:
   }
 
   return res.json({ success: false, source: 'fallback' });
+});
+
+// ================= GLOBAL CROSS-DEVICE SLOT HOLD & BOOKING SYSTEM =================
+
+interface ServerSlotHold {
+  slotId: string;
+  doctorId: string;
+  date: string;
+  time: string;
+  sessionId: string;
+  heldAt: number;
+  expiresAt: number;
+  label?: string;
+}
+
+interface ServerSlotBooked {
+  slotId: string;
+  doctorId?: string;
+  date?: string;
+  time?: string;
+  bookedAt: number;
+  patientName?: string;
+}
+
+const serverHeldSlots = new Map<string, ServerSlotHold>();
+const serverBookedSlots = new Map<string, ServerSlotBooked>();
+const sseClients = new Set<Response>();
+
+const SLOTS_CACHE_FILE = path.join(process.cwd(), '.slots_cache.json');
+
+function loadSlotsCache() {
+  try {
+    if (fs.existsSync(SLOTS_CACHE_FILE)) {
+      const data = JSON.parse(fs.readFileSync(SLOTS_CACHE_FILE, 'utf-8'));
+      const now = Date.now();
+      if (Array.isArray(data.heldSlots)) {
+        for (const h of data.heldSlots) {
+          if (h && h.expiresAt > now) {
+            serverHeldSlots.set(h.slotId, h);
+          }
+        }
+      }
+      if (Array.isArray(data.bookedSlots)) {
+        for (const b of data.bookedSlots) {
+          if (typeof b === 'string') {
+            serverBookedSlots.set(b, { slotId: b, bookedAt: now });
+          } else if (b && b.slotId) {
+            serverBookedSlots.set(b.slotId, b);
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore cache load issues
+  }
+}
+
+function saveSlotsCache() {
+  try {
+    const data = {
+      heldSlots: Array.from(serverHeldSlots.values()),
+      bookedSlots: Array.from(serverBookedSlots.values()),
+    };
+    fs.writeFileSync(SLOTS_CACHE_FILE, JSON.stringify(data), 'utf-8');
+  } catch {
+    // Ignore cache write issues
+  }
+}
+
+loadSlotsCache();
+
+function cleanupExpiredHolds(): boolean {
+  const now = Date.now();
+  let changed = false;
+  for (const [slotId, hold] of serverHeldSlots.entries()) {
+    if (hold.expiresAt <= now) {
+      serverHeldSlots.delete(slotId);
+      changed = true;
+    }
+  }
+  if (changed) {
+    saveSlotsCache();
+  }
+  return changed;
+}
+
+function broadcastSlotUpdate(eventData: any = { type: 'SLOTS_UPDATED', timestamp: Date.now() }) {
+  const payload = `data: ${JSON.stringify(eventData)}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.write(payload);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}
+
+// Periodic cleanup of expired holds every 2 seconds
+setInterval(() => {
+  if (cleanupExpiredHolds()) {
+    broadcastSlotUpdate({ type: 'HOLDS_EXPIRED', timestamp: Date.now() });
+  }
+}, 2000);
+
+// SSE Stream for real-time cross-device slot synchronization
+app.get('/api/slots/stream', (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  if (typeof (res as any).flushHeaders === 'function') {
+    (res as any).flushHeaders();
+  }
+
+  sseClients.add(res);
+
+  // Immediate handshake message
+  res.write(`data: ${JSON.stringify({ type: 'CONNECTED', timestamp: Date.now() })}\n\n`);
+
+  req.on('close', () => {
+    sseClients.delete(res);
+  });
+});
+
+// Get global slot availability across all devices
+app.get('/api/slots/availability', (req: Request, res: Response) => {
+  cleanupExpiredHolds();
+  const { doctorId, date, sessionId } = req.query as {
+    doctorId?: string;
+    date?: string;
+    sessionId?: string;
+  };
+  const clientSession = sessionId || '';
+
+  const activeHolds: Record<
+    string,
+    {
+      slotId: string;
+      doctorId: string;
+      date: string;
+      time: string;
+      expiresAt: number;
+      heldByMe: boolean;
+      label: string;
+    }
+  > = {};
+
+  for (const [slotId, hold] of serverHeldSlots.entries()) {
+    if (hold.expiresAt > Date.now()) {
+      if ((!doctorId || hold.doctorId === doctorId) && (!date || hold.date === date)) {
+        const isHeldByMe = Boolean(clientSession && hold.sessionId === clientSession);
+        activeHolds[slotId] = {
+          slotId,
+          doctorId: hold.doctorId,
+          date: hold.date,
+          time: hold.time,
+          expiresAt: hold.expiresAt,
+          heldByMe: isHeldByMe,
+          label: isHeldByMe ? 'Held for you' : 'Held by patient',
+        };
+      }
+    }
+  }
+
+  const bookedList: string[] = [];
+  for (const [slotId, b] of serverBookedSlots.entries()) {
+    if ((!doctorId || !b.doctorId || b.doctorId === doctorId) && (!date || !b.date || b.date === date)) {
+      bookedList.push(slotId);
+    }
+  }
+
+  res.json({
+    success: true,
+    serverTime: Date.now(),
+    heldSlots: activeHolds,
+    bookedSlots: bookedList,
+  });
+});
+
+// Hold a slot across all devices
+app.post('/api/slots/hold', (req: Request, res: Response) => {
+  cleanupExpiredHolds();
+  const { slotId, doctorId, date, time, sessionId, durationSeconds = 300 } = req.body;
+
+  if (!slotId || !sessionId) {
+    return res.status(400).json({ success: false, message: 'slotId and sessionId are required' });
+  }
+
+  if (serverBookedSlots.has(slotId)) {
+    return res.status(409).json({
+      success: false,
+      message: 'This slot was just booked by another patient. Please choose an available slot.',
+    });
+  }
+
+  const existingHold = serverHeldSlots.get(slotId);
+  if (existingHold && existingHold.expiresAt > Date.now() && existingHold.sessionId !== sessionId) {
+    return res.status(409).json({
+      success: false,
+      message: 'This slot is currently held by another patient. Please choose another available slot.',
+    });
+  }
+
+  // Release any other slot previously held by THIS session so each user holds at most 1 slot
+  for (const [id, h] of serverHeldSlots.entries()) {
+    if (h.sessionId === sessionId && id !== slotId) {
+      serverHeldSlots.delete(id);
+    }
+  }
+
+  const expiresAt = Date.now() + durationSeconds * 1000;
+  const holdRecord: ServerSlotHold = {
+    slotId,
+    doctorId: doctorId || '',
+    date: date || '',
+    time: time || '',
+    sessionId,
+    heldAt: Date.now(),
+    expiresAt,
+    label: 'Held for you',
+  };
+
+  serverHeldSlots.set(slotId, holdRecord);
+  saveSlotsCache();
+
+  // Instant notification to all connected devices
+  broadcastSlotUpdate({
+    type: 'SLOT_HELD',
+    slotId,
+    doctorId,
+    date,
+    time,
+    sessionId,
+    expiresAt,
+  });
+
+  res.json({
+    success: true,
+    slotId,
+    heldUntil: expiresAt,
+    message: 'Slot held successfully across devices',
+  });
+});
+
+// Release a slot hold
+app.post('/api/slots/release', (req: Request, res: Response) => {
+  const { slotId, sessionId } = req.body;
+  let changed = false;
+
+  if (slotId) {
+    const existing = serverHeldSlots.get(slotId);
+    if (existing && (!sessionId || existing.sessionId === sessionId)) {
+      serverHeldSlots.delete(slotId);
+      changed = true;
+    }
+  } else if (sessionId) {
+    for (const [id, h] of serverHeldSlots.entries()) {
+      if (h.sessionId === sessionId) {
+        serverHeldSlots.delete(id);
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    saveSlotsCache();
+    broadcastSlotUpdate({
+      type: 'SLOT_RELEASED',
+      slotId,
+      sessionId,
+      timestamp: Date.now(),
+    });
+  }
+
+  res.json({ success: true });
+});
+
+// Confirm booking and permanently book slot
+app.post('/api/slots/book', (req: Request, res: Response) => {
+  cleanupExpiredHolds();
+  const { slotId, doctorId, date, time, sessionId, appointment } = req.body;
+
+  if (!slotId) {
+    return res.status(400).json({ success: false, message: 'slotId is required' });
+  }
+
+  if (serverBookedSlots.has(slotId)) {
+    return res.status(409).json({
+      success: false,
+      message: 'This slot is no longer available. Another patient just completed booking this time.',
+    });
+  }
+
+  const existingHold = serverHeldSlots.get(slotId);
+  if (existingHold && existingHold.expiresAt > Date.now() && existingHold.sessionId !== sessionId) {
+    return res.status(409).json({
+      success: false,
+      message: 'This slot is currently held by another patient and cannot be booked.',
+    });
+  }
+
+  // Permanently mark as booked
+  serverBookedSlots.set(slotId, {
+    slotId,
+    doctorId: doctorId || appointment?.doctor?.id || '',
+    date: date || appointment?.date || '',
+    time: time || appointment?.time || '',
+    bookedAt: Date.now(),
+    patientName: appointment?.patientName,
+  });
+
+  // Remove the temporary hold
+  serverHeldSlots.delete(slotId);
+  saveSlotsCache();
+
+  // Instant notification to all connected devices
+  broadcastSlotUpdate({
+    type: 'SLOT_BOOKED',
+    slotId,
+    doctorId,
+    date,
+    time,
+    timestamp: Date.now(),
+  });
+
+  res.json({ success: true, slotId, appointment });
 });
 
 async function startServer() {

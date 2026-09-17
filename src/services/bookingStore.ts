@@ -32,6 +32,118 @@ export function getClientSessionId(): string {
   }
 }
 
+export interface ServerHeldSlotInfo {
+  slotId: string;
+  doctorId: string;
+  date: string;
+  time: string;
+  expiresAt: number;
+  heldByMe: boolean;
+  label: string;
+}
+
+export interface GlobalSlotState {
+  heldSlots: Record<string, ServerHeldSlotInfo>;
+  bookedSlots: string[];
+  serverTime: number;
+}
+
+// In-memory global slot availability cache
+let globalSlotCache: GlobalSlotState = {
+  heldSlots: {},
+  bookedSlots: ['doc-card-1_today_1', 'doc-neuro-1_today_4'],
+  serverTime: Date.now(),
+};
+
+// Fetch latest global slot availability from the backend server
+export async function fetchServerSlotAvailability(
+  doctorId?: string,
+  date?: string
+): Promise<GlobalSlotState> {
+  const sessionId = getClientSessionId();
+  try {
+    const params = new URLSearchParams();
+    if (doctorId) params.append('doctorId', doctorId);
+    if (date) params.append('date', date);
+    params.append('sessionId', sessionId);
+
+    const res = await fetch(`/api/slots/availability?${params.toString()}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success) {
+        globalSlotCache = {
+          heldSlots: data.heldSlots || {},
+          bookedSlots: Array.isArray(data.bookedSlots) ? data.bookedSlots : [],
+          serverTime: data.serverTime || Date.now(),
+        };
+        try {
+          localStorage.setItem(STORAGE_KEYS.HELD_SLOTS, JSON.stringify(globalSlotCache.heldSlots));
+          localStorage.setItem(STORAGE_KEYS.BOOKED_SLOTS, JSON.stringify(globalSlotCache.bookedSlots));
+        } catch {
+          // Ignore
+        }
+      }
+    }
+  } catch {
+    // Network fallback
+  }
+  return globalSlotCache;
+}
+
+// Subscribe to real-time slot updates across devices via SSE and fast polling
+export function subscribeToSlotUpdates(
+  doctorId: string,
+  date: string,
+  onUpdate: () => void
+): () => void {
+  let isSubscribed = true;
+  let eventSource: EventSource | null = null;
+
+  // 1. SSE Connection for instant push
+  try {
+    eventSource = new EventSource('/api/slots/stream');
+    eventSource.onmessage = async (evt) => {
+      if (!isSubscribed) return;
+      try {
+        const payload = JSON.parse(evt.data);
+        if (
+          payload.type === 'SLOT_HELD' ||
+          payload.type === 'SLOT_RELEASED' ||
+          payload.type === 'SLOT_BOOKED' ||
+          payload.type === 'HOLDS_EXPIRED' ||
+          payload.type === 'CONNECTED'
+        ) {
+          await fetchServerSlotAvailability(doctorId, date);
+          if (isSubscribed) {
+            onUpdate();
+          }
+        }
+      } catch {
+        // Fallback
+      }
+    };
+  } catch {
+    // EventSource fallback
+  }
+
+  // 2. Guaranteed Fast Polling interval (1.5 seconds)
+  const intervalId = setInterval(async () => {
+    if (!isSubscribed) return;
+    await fetchServerSlotAvailability(doctorId, date);
+    if (isSubscribed) {
+      onUpdate();
+    }
+  }, 1500);
+
+  return () => {
+    isSubscribed = false;
+    if (eventSource) {
+      eventSource.close();
+    }
+    clearInterval(intervalId);
+  };
+}
+
 interface HeldSlotRecord {
   slotId: string;
   sessionId: string;
@@ -112,10 +224,18 @@ export function calculatePricing(
 
 // Generate realistic slots for a doctor across the target date
 export function generateDoctorSlots(doctorId: string, targetDateStr: string): AppointmentSlot[] {
-  const bookedSet = getBookedSlotKeys();
-  const heldMap = getHeldSlotsMap();
   const mySessionId = getClientSessionId();
   const now = Date.now();
+
+  const bookedSet = new Set([
+    ...globalSlotCache.bookedSlots,
+    ...Array.from(getBookedSlotKeys()),
+  ]);
+
+  const heldMap = {
+    ...getHeldSlotsMap(),
+    ...globalSlotCache.heldSlots,
+  };
 
   const todayStr = new Date().toISOString().split('T')[0];
   const isToday = targetDateStr === todayStr;
@@ -150,21 +270,26 @@ export function generateDoctorSlots(doctorId: string, targetDateStr: string): Ap
     let heldByLabel: string | undefined;
     let unavailableReason: string | undefined;
 
+    const serverHold = globalSlotCache.heldSlots[slotId];
+
     // Check if slot has expired in past hours of today
     if (isToday && (t.hour < currentHour || (t.hour === currentHour && t.min < currentMinute - 10))) {
       status = 'EXPIRED';
     } else if (bookedSet.has(slotId)) {
       status = 'BOOKED';
+    } else if (serverHold && serverHold.expiresAt > now) {
+      status = 'HELD';
+      heldUntil = serverHold.expiresAt;
+      heldByMe = Boolean(serverHold.heldByMe);
+      heldByLabel = serverHold.label || (heldByMe ? 'Held for you' : 'Held by patient');
     } else if (heldMap[slotId] && heldMap[slotId].expiresAt > now) {
       status = 'HELD';
       heldUntil = heldMap[slotId].expiresAt;
-      if (heldMap[slotId].sessionId === mySessionId) {
-        heldByMe = true;
-        heldByLabel = 'Held for you';
-      } else {
-        heldByMe = false;
-        heldByLabel = 'Held by patient';
-      }
+      const localHold = heldMap[slotId] as any;
+      const isMine =
+        localHold?.sessionId === mySessionId || localHold?.heldByMe === true;
+      heldByMe = isMine;
+      heldByLabel = isMine ? 'Held for you' : 'Held by patient';
     } else {
       // Deterministic clinic simulation for authenticity:
       // Doctor on inpatient OT rounds at 03:30 PM (idx 7)
@@ -174,16 +299,11 @@ export function generateDoctorSlots(doctorId: string, targetDateStr: string): Ap
       } else if (idx === 12) {
         // 07:00 PM Booked by another clinic patient
         status = 'BOOKED';
-      } else if (idx === 11) {
-        // 06:30 PM Held by another patient at clinic registration desk
-        status = 'HELD';
-        heldUntil = now + 180 * 1000; // 3 min remaining
-        heldByMe = false;
-        heldByLabel = 'Held by patient';
       } else if (idx === 2) {
         // 10:15 AM Booked
         status = 'BOOKED';
       } else {
+        // Dynamic slots (including 06:30 PM) are available unless held across devices
         status = 'AVAILABLE';
       }
     }
@@ -212,99 +332,196 @@ function getBookedSlotKeys(): Set<string> {
   }
 }
 
-// Temporarily hold a slot (e.g. 5 minutes countdown)
-export function temporarilyReserveSlot(
+// Temporarily hold a slot across all devices (e.g. 5 minutes countdown)
+export async function temporarilyReserveSlot(
   slotId: string,
-  durationSeconds: number = 300
-): { success: boolean; heldUntil?: number; message?: string } {
+  durationSeconds: number = 300,
+  slotDetails?: { doctorId?: string; date?: string; time?: string }
+): Promise<{ success: boolean; heldUntil?: number; message?: string }> {
+  const mySessionId = getClientSessionId();
+
+  // Check locally booked first
   const booked = getBookedSlotKeys();
-  if (booked.has(slotId)) {
+  if (booked.has(slotId) || globalSlotCache.bookedSlots.includes(slotId)) {
     return {
       success: false,
       message: 'This slot was just booked by another patient. Please choose an available slot.',
     };
   }
 
-  const heldMap = getHeldSlotsMap();
-  const mySessionId = getClientSessionId();
-  const existing = heldMap[slotId];
+  try {
+    const res = await fetch('/api/slots/hold', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slotId,
+        doctorId: slotDetails?.doctorId,
+        date: slotDetails?.date,
+        time: slotDetails?.time,
+        sessionId: mySessionId,
+        durationSeconds,
+      }),
+    });
 
-  if (existing && existing.expiresAt > Date.now() && existing.sessionId !== mySessionId) {
-    return {
-      success: false,
-      message: 'This slot is currently held by another patient. Please choose another available slot.',
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      return {
+        success: false,
+        message:
+          data.message ||
+          'This slot is currently held by another patient. Please choose another available slot.',
+      };
+    }
+
+    const expiresAt = data.heldUntil || Date.now() + durationSeconds * 1000;
+
+    // Update global memory cache immediately
+    globalSlotCache.heldSlots[slotId] = {
+      slotId,
+      doctorId: slotDetails?.doctorId || '',
+      date: slotDetails?.date || '',
+      time: slotDetails?.time || '',
+      expiresAt,
+      heldByMe: true,
+      label: 'Held for you',
     };
+
+    // Release any other slot previously held by THIS user
+    for (const [id, h] of Object.entries(globalSlotCache.heldSlots)) {
+      if (h.heldByMe && id !== slotId) {
+        delete globalSlotCache.heldSlots[id];
+      }
+    }
+
+    // Mirror to local storage
+    const heldMap = getHeldSlotsMap();
+    for (const [k, v] of Object.entries(heldMap)) {
+      if (v.sessionId === mySessionId && k !== slotId) {
+        delete heldMap[k];
+      }
+    }
+    heldMap[slotId] = {
+      slotId,
+      sessionId: mySessionId,
+      heldAt: Date.now(),
+      expiresAt,
+      label: 'Held for you',
+    };
+    saveHeldSlotsMap(heldMap);
+
+    return { success: true, heldUntil: expiresAt };
+  } catch {
+    // Graceful offline fallback
+    const expiresAt = Date.now() + durationSeconds * 1000;
+    const heldMap = getHeldSlotsMap();
+    heldMap[slotId] = {
+      slotId,
+      sessionId: mySessionId,
+      heldAt: Date.now(),
+      expiresAt,
+      label: 'Held for you',
+    };
+    saveHeldSlotsMap(heldMap);
+    return { success: true, heldUntil: expiresAt };
+  }
+}
+
+// Release a temporary hold across all devices
+export async function releaseReservation(slotId?: string): Promise<void> {
+  const mySessionId = getClientSessionId();
+  try {
+    fetch('/api/slots/release', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slotId, sessionId: mySessionId }),
+    }).catch(() => {});
+  } catch {
+    // Ignore
   }
 
-  // Release any other slot previously held by THIS session so only 1 slot is held at a time
-  for (const [k, v] of Object.entries(heldMap)) {
-    if (v.sessionId === mySessionId && k !== slotId) {
-      delete heldMap[k];
+  if (slotId) {
+    delete globalSlotCache.heldSlots[slotId];
+  } else {
+    for (const [id, h] of Object.entries(globalSlotCache.heldSlots)) {
+      if (h.heldByMe) {
+        delete globalSlotCache.heldSlots[id];
+      }
     }
   }
 
-  const expiresAt = Date.now() + durationSeconds * 1000;
-  heldMap[slotId] = {
-    slotId,
-    sessionId: mySessionId,
-    heldAt: Date.now(),
-    expiresAt,
-    label: 'Held for you',
-  };
-
-  saveHeldSlotsMap(heldMap);
-  return { success: true, heldUntil: expiresAt };
-}
-
-// Release a temporary hold
-export function releaseReservation(slotId?: string): void {
   try {
     const heldMap = getHeldSlotsMap();
-    const mySessionId = getClientSessionId();
     if (slotId) {
-      if (heldMap[slotId]?.sessionId === mySessionId) {
-        delete heldMap[slotId];
-        saveHeldSlotsMap(heldMap);
-      }
+      delete heldMap[slotId];
     } else {
       for (const [k, v] of Object.entries(heldMap)) {
         if (v.sessionId === mySessionId) {
           delete heldMap[k];
         }
       }
-      saveHeldSlotsMap(heldMap);
     }
+    saveHeldSlotsMap(heldMap);
   } catch {
     // Ignore
   }
 }
 
-// Confirm booking
-export function confirmBooking(
+// Confirm booking across all devices
+export async function confirmBooking(
   slotId: string,
   appointmentData: Omit<Appointment, 'id' | 'createdAt' | 'status'>
-): { success: boolean; appointment?: Appointment; error?: string } {
+): Promise<{ success: boolean; appointment?: Appointment; error?: string }> {
   const booked = getBookedSlotKeys();
-  if (booked.has(slotId)) {
+  if (booked.has(slotId) || globalSlotCache.bookedSlots.includes(slotId)) {
     return {
       success: false,
       error: 'This slot is no longer available. Another patient just completed booking this time.',
     };
   }
 
-  // Mark slot as permanently booked
-  booked.add(slotId);
-  localStorage.setItem(STORAGE_KEYS.BOOKED_SLOTS, JSON.stringify(Array.from(booked)));
-
-  // Release the temporary hold
-  releaseReservation(slotId);
-
+  const mySessionId = getClientSessionId();
   const appointment: Appointment = {
     ...appointmentData,
     id: 'PX-' + Math.floor(100000 + Math.random() * 900000),
     status: 'confirmed',
     createdAt: new Date().toISOString(),
   };
+
+  try {
+    const res = await fetch('/api/slots/book', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slotId,
+        doctorId: appointmentData.doctor?.id,
+        date: appointmentData.date,
+        time: appointmentData.time,
+        sessionId: mySessionId,
+        appointment,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      return {
+        success: false,
+        error:
+          data.message ||
+          'This slot is no longer available. Another patient just completed booking this time.',
+      };
+    }
+  } catch {
+    // Network fallback
+  }
+
+  // Mark slot as permanently booked locally
+  booked.add(slotId);
+  localStorage.setItem(STORAGE_KEYS.BOOKED_SLOTS, JSON.stringify(Array.from(booked)));
+  globalSlotCache.bookedSlots.push(slotId);
+  delete globalSlotCache.heldSlots[slotId];
+
+  // Release local hold
+  releaseReservation(slotId);
 
   const existing = getAllAppointments();
   existing.unshift(appointment);
@@ -393,6 +610,13 @@ export function cancelAppointment(appointmentId: string, reason: string): boolea
     const booked = getBookedSlotKeys();
     booked.delete(target.slotId);
     localStorage.setItem(STORAGE_KEYS.BOOKED_SLOTS, JSON.stringify(Array.from(booked)));
+    globalSlotCache.bookedSlots = globalSlotCache.bookedSlots.filter((id) => id !== target.slotId);
+
+    fetch('/api/slots/release', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slotId: target.slotId }),
+    }).catch(() => {});
 
     return true;
   } catch {
@@ -412,15 +636,35 @@ export function rescheduleAppointment(
     if (!target) return { success: false, error: 'Appointment not found.' };
 
     const booked = getBookedSlotKeys();
-    if (booked.has(newSlotId)) {
+    if (booked.has(newSlotId) || globalSlotCache.bookedSlots.includes(newSlotId)) {
       return { success: false, error: 'The selected slot has just been taken.' };
     }
 
     // Release previous slot
     booked.delete(target.slotId);
+    globalSlotCache.bookedSlots = globalSlotCache.bookedSlots.filter((id) => id !== target.slotId);
+    fetch('/api/slots/release', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slotId: target.slotId }),
+    }).catch(() => {});
+
     // Take new slot
     booked.add(newSlotId);
+    globalSlotCache.bookedSlots.push(newSlotId);
     localStorage.setItem(STORAGE_KEYS.BOOKED_SLOTS, JSON.stringify(Array.from(booked)));
+
+    fetch('/api/slots/book', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slotId: newSlotId,
+        doctorId: target.doctor?.id,
+        date: newDate,
+        time: newTime,
+        sessionId: getClientSessionId(),
+      }),
+    }).catch(() => {});
 
     target.previousSlot = {
       date: target.date,
@@ -492,6 +736,15 @@ export function getTimeSlotsForDate(
   return generateDoctorSlots(doctorId, dateStr);
 }
 
+export async function fetchTimeSlotsForDate(
+  doctorId: string,
+  _clinicId: string,
+  dateStr: string
+): Promise<import('../types').TimeSlot[]> {
+  await fetchServerSlotAvailability(doctorId, dateStr);
+  return generateDoctorSlots(doctorId, dateStr);
+}
+
 export function calculatePricingBreakdown(
   baseFee: number,
   triageCategory: TriageCategory = 'LOW'
@@ -499,11 +752,14 @@ export function calculatePricingBreakdown(
   return calculatePricing({ consultationFee: baseFee } as Doctor, triageCategory);
 }
 
-export function reserveSlotTemporary(slotId: string): { success: boolean; message?: string } {
-  return temporarilyReserveSlot(slotId);
+export async function reserveSlotTemporary(
+  slotId: string,
+  slotDetails?: { doctorId?: string; date?: string; time?: string }
+): Promise<{ success: boolean; message?: string }> {
+  return temporarilyReserveSlot(slotId, 300, slotDetails);
 }
 
-export function bookAppointment(params: {
+export async function bookAppointment(params: {
   doctor: Doctor;
   clinic: Clinic;
   specialty: string;
@@ -516,9 +772,9 @@ export function bookAppointment(params: {
   patientAge: number;
   chiefConcern?: string;
   triageCategory: TriageCategory;
-}): Appointment {
+}): Promise<Appointment> {
   const pricing = calculatePricing(params.doctor, params.triageCategory);
-  const result = confirmBooking(params.slotId, {
+  const result = await confirmBooking(params.slotId, {
     patientName: params.patientName,
     patientPhone: params.patientPhone,
     patientEmail: params.patientEmail,
