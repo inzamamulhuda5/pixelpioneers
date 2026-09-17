@@ -47,30 +47,30 @@ export const HeroChatComposer: React.FC<HeroChatComposerProps> = ({
   };
 
   return (
-    <div className="flex flex-col items-center justify-center pt-8 pb-16 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto w-full">
-      {/* Top Pill */}
-      <div className="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3.5 py-1.5 border border-teal-200/70 mb-6 shadow-2xs">
-        <Sparkles className="h-3.5 w-3.5 text-teal-600" />
-        <span className="text-xs font-semibold text-teal-800">
+    <div className="flex flex-col items-center pt-6 sm:pt-10 pb-16 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto w-full">
+      {/* Top AI Capability Badge */}
+      <div className="inline-flex items-center gap-2 rounded-full bg-teal-50 px-4 py-1.5 border border-teal-200/70 mb-5 sm:mb-6 shadow-2xs">
+        <Sparkles className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+        <span className="text-xs font-semibold text-teal-800 whitespace-nowrap">
           AI Patient Intake &bull; Transparent Triage &bull; Direct Clinic Booking
         </span>
       </div>
 
       {/* Large Welcoming Heading */}
-      <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-zinc-900 text-center tracking-tight font-['Space_Grotesk'] max-w-2xl leading-tight">
+      <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-zinc-900 text-center tracking-tight font-['Space_Grotesk'] max-w-2xl leading-[1.15]">
         How can Pixel Pioneers help you today?
       </h1>
 
-      {/* Subheading */}
-      <p className="mt-3 text-base sm:text-lg text-zinc-600 text-center max-w-xl leading-relaxed">
+      {/* Subheading with Intentional Wrapping */}
+      <p className="mt-3.5 sm:mt-4 text-base sm:text-lg text-zinc-600 text-center max-w-xl sm:max-w-2xl leading-relaxed">
         Describe what you&apos;re experiencing, upload a report, or talk to our AI assistant.
       </p>
 
       {/* Primary AI Composer Box */}
-      <div className="mt-8 w-full max-w-2xl">
+      <div className="mt-7 sm:mt-8 w-full max-w-3xl">
         <form
           onSubmit={handleSubmit}
-          className="relative rounded-2xl border border-zinc-300 bg-white p-3 sm:p-4 shadow-lg shadow-zinc-200/50 transition-all focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-500/20"
+          className="relative rounded-2xl border border-zinc-300 bg-white p-4 sm:p-5 shadow-lg shadow-zinc-200/40 transition-all focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-500/20"
         >
           <textarea
             id="composer-input"
@@ -79,11 +79,11 @@ export const HeroChatComposer: React.FC<HeroChatComposerProps> = ({
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Tell me what you're experiencing (e.g. 'I've had a bad headache for three days' or 'Chest tightness when climbing stairs')..."
-            className="w-full resize-none border-0 bg-transparent text-sm sm:text-base text-zinc-900 placeholder:text-zinc-400 focus:outline-hidden leading-relaxed"
+            className="w-full min-h-[76px] resize-none border-0 bg-transparent text-sm sm:text-base text-zinc-900 placeholder:text-zinc-400 focus:outline-hidden leading-relaxed"
           />
 
           {/* Action Row */}
-          <div className="mt-2 flex items-center justify-between border-t border-zinc-100 pt-2.5">
+          <div className="mt-3 flex items-center justify-between border-t border-zinc-100 pt-3">
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -91,8 +91,8 @@ export const HeroChatComposer: React.FC<HeroChatComposerProps> = ({
                 className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 transition cursor-pointer"
                 title="Attach PDF prescription or medical image"
               >
-                <Paperclip className="h-4 w-4 text-teal-600" />
-                <span className="hidden sm:inline">Upload report</span>
+                <Paperclip className="h-4 w-4 text-teal-600 shrink-0" />
+                <span className="hidden sm:inline whitespace-nowrap">Upload report</span>
               </button>
 
               <button
@@ -101,15 +101,15 @@ export const HeroChatComposer: React.FC<HeroChatComposerProps> = ({
                 className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 transition cursor-pointer"
                 title="Live hands-free voice intake"
               >
-                <Mic className="h-4 w-4 text-teal-600" />
-                <span className="hidden sm:inline">Voice chat</span>
+                <Mic className="h-4 w-4 text-teal-600 shrink-0" />
+                <span className="hidden sm:inline whitespace-nowrap">Voice chat</span>
               </button>
             </div>
 
             <button
               type="submit"
               disabled={!inputText.trim()}
-              className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-600 text-white shadow-xs transition hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 cursor-pointer"
+              className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-600 text-white shadow-xs transition hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 cursor-pointer shrink-0"
               title="Send to AI Intake Assistant"
             >
               <Send className="h-4 w-4" />
@@ -122,33 +122,33 @@ export const HeroChatComposer: React.FC<HeroChatComposerProps> = ({
       <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5">
         <button
           onClick={onOpenUpload}
-          className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-zinc-700 shadow-2xs hover:bg-zinc-50 hover:border-zinc-300 transition cursor-pointer"
+          className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-zinc-700 shadow-2xs hover:bg-zinc-50 hover:border-zinc-300 transition cursor-pointer whitespace-nowrap"
         >
-          <FileUp className="h-3.5 w-3.5 text-teal-600" />
+          <FileUp className="h-3.5 w-3.5 text-teal-600 shrink-0" />
           <span>Upload Prescription</span>
         </button>
 
         <button
           onClick={onOpenVoice}
-          className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-zinc-700 shadow-2xs hover:bg-zinc-50 hover:border-zinc-300 transition cursor-pointer"
+          className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-zinc-700 shadow-2xs hover:bg-zinc-50 hover:border-zinc-300 transition cursor-pointer whitespace-nowrap"
         >
-          <Mic className="h-3.5 w-3.5 text-teal-600" />
+          <Mic className="h-3.5 w-3.5 text-teal-600 shrink-0" />
           <span>Start Voice Chat</span>
         </button>
 
         <button
           onClick={() => onNavigateTab('doctors')}
-          className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-zinc-700 shadow-2xs hover:bg-zinc-50 hover:border-zinc-300 transition cursor-pointer"
+          className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-zinc-700 shadow-2xs hover:bg-zinc-50 hover:border-zinc-300 transition cursor-pointer whitespace-nowrap"
         >
-          <Stethoscope className="h-3.5 w-3.5 text-teal-600" />
+          <Stethoscope className="h-3.5 w-3.5 text-teal-600 shrink-0" />
           <span>Find a Doctor</span>
         </button>
 
         <button
           onClick={() => onNavigateTab('bookings')}
-          className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-zinc-700 shadow-2xs hover:bg-zinc-50 hover:border-zinc-300 transition cursor-pointer"
+          className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-zinc-700 shadow-2xs hover:bg-zinc-50 hover:border-zinc-300 transition cursor-pointer whitespace-nowrap"
         >
-          <CalendarCheck className="h-3.5 w-3.5 text-teal-600" />
+          <CalendarCheck className="h-3.5 w-3.5 text-teal-600 shrink-0" />
           <span>View My Bookings</span>
         </button>
       </div>

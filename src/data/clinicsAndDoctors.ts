@@ -461,6 +461,7 @@ export const DOCTORS: Doctor[] = [
   // Cardiology
   {
     id: 'doc-card-1',
+    avatarUrl: '/doctors/doc-card-1.jpg',
     name: 'Dr. Vikram Sen',
     clinicId: 'kol-1',
     clinicName: 'Pixel Health Specialty Clinic',
@@ -480,6 +481,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-card-2',
+    avatarUrl: '/doctors/doc-card-2.jpg',
     name: 'Dr. Priya Banerjee',
     clinicId: 'kol-2',
     clinicName: 'Ballygunge Comprehensive Care',
@@ -499,6 +501,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-card-3',
+    avatarUrl: '/doctors/doc-card-3.jpg',
     name: 'Dr. Rajesh Nair',
     clinicId: 'del-1',
     clinicName: 'South Extension Medical Pavilion',
@@ -518,6 +521,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-card-4',
+    avatarUrl: '/doctors/doc-card-4.jpg',
     name: 'Dr. Meera Iyer',
     clinicId: 'blr-1',
     clinicName: 'Indiranagar Urban Health Hub',
@@ -536,6 +540,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-card-5',
+    avatarUrl: '/doctors/doc-card-5.jpg',
     name: 'Dr. Farooq Qureshi',
     clinicId: 'mum-1',
     clinicName: 'Bandra West Pioneer PolyClinic',
@@ -556,6 +561,7 @@ export const DOCTORS: Doctor[] = [
   // Neurology
   {
     id: 'doc-neuro-1',
+    avatarUrl: '/doctors/doc-neuro-1.jpg',
     name: 'Dr. Ananya Sharma',
     clinicId: 'kol-1',
     clinicName: 'Pixel Health Specialty Clinic',
@@ -575,6 +581,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-neuro-2',
+    avatarUrl: '/doctors/doc-neuro-2.jpg',
     name: 'Dr. Rohan Deshmukh',
     clinicId: 'pun-1',
     clinicName: 'Koregaon Park Holistic Clinic',
@@ -594,6 +601,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-neuro-3',
+    avatarUrl: '/doctors/doc-neuro-3.jpg',
     name: 'Dr. Sunita Varma',
     clinicId: 'del-1',
     clinicName: 'South Extension Medical Pavilion',
@@ -614,6 +622,7 @@ export const DOCTORS: Doctor[] = [
   // Dermatology
   {
     id: 'doc-derm-1',
+    avatarUrl: '/doctors/doc-derm-1.jpg',
     name: 'Dr. Arindam Ganguly',
     clinicId: 'kol-1',
     clinicName: 'Pixel Health Specialty Clinic',
@@ -632,6 +641,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-derm-2',
+    avatarUrl: '/doctors/doc-derm-2.jpg',
     name: 'Dr. Shweta Kulkarni',
     clinicId: 'mum-1',
     clinicName: 'Bandra West Pioneer PolyClinic',
@@ -650,6 +660,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-derm-3',
+    avatarUrl: '/doctors/doc-derm-3.jpg',
     name: 'Dr. Kavitha Reddy',
     clinicId: 'hyd-2',
     clinicName: 'HITEC City TechMedic Chambers',
@@ -670,6 +681,7 @@ export const DOCTORS: Doctor[] = [
   // General Medicine
   {
     id: 'doc-gen-1',
+    avatarUrl: '/doctors/doc-gen-1.jpg',
     name: 'Dr. Subhashish Roy',
     clinicId: 'kol-1',
     clinicName: 'Pixel Health Specialty Clinic',
@@ -689,6 +701,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-gen-2',
+    avatarUrl: '/doctors/doc-gen-2.jpg',
     name: 'Dr. Neha Agarwal',
     clinicId: 'del-2',
     clinicName: 'Connaught Place Diagnostic & Clinic',
@@ -707,6 +720,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-gen-3',
+    avatarUrl: '/doctors/doc-gen-3.jpg',
     name: 'Dr. Arvind Swaminathan',
     clinicId: 'che-1',
     clinicName: 'Nungambakkam Specialty Pavilion',
@@ -727,6 +741,7 @@ export const DOCTORS: Doctor[] = [
   // Orthopedics
   {
     id: 'doc-ortho-1',
+    avatarUrl: '/doctors/doc-ortho-1.jpg',
     name: 'Dr. Debabrata Ghosh',
     clinicId: 'kol-3',
     clinicName: 'New Town Apex MediCenter',
@@ -745,6 +760,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-ortho-2',
+    avatarUrl: '/doctors/doc-ortho-2.jpg',
     name: 'Dr. Harish Gowda',
     clinicId: 'blr-2',
     clinicName: 'Koramangala Medical Guild',
@@ -763,6 +779,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-ortho-3',
+    avatarUrl: '/doctors/doc-ortho-3.jpg',
     name: 'Dr. Vivek Saxena',
     clinicId: 'del-3',
     clinicName: 'Vasant Kunj Integrated Health Centre',
@@ -783,6 +800,7 @@ export const DOCTORS: Doctor[] = [
   // Gastroenterology
   {
     id: 'doc-gastro-1',
+    avatarUrl: '/doctors/doc-gastro-1.jpg',
     name: 'Dr. Rituparna Mukherjee',
     clinicId: 'kol-2',
     clinicName: 'Ballygunge Comprehensive Care',
@@ -801,6 +819,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-gastro-2',
+    avatarUrl: '/doctors/doc-gastro-2.jpg',
     name: 'Dr. Nikhil Kamath',
     clinicId: 'mum-2',
     clinicName: 'Worli Seaface Medical Chambers',
@@ -819,6 +838,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-gastro-3',
+    avatarUrl: '/doctors/doc-gastro-3.jpg',
     name: 'Dr. K. S. Rao',
     clinicId: 'hyd-1',
     clinicName: 'Jubilee Hills Precision Care Clinic',
@@ -839,6 +859,7 @@ export const DOCTORS: Doctor[] = [
   // ENT
   {
     id: 'doc-ent-1',
+    avatarUrl: '/doctors/doc-ent-1.jpg',
     name: 'Dr. Manish Kapoor',
     clinicId: 'del-2',
     clinicName: 'Connaught Place Diagnostic & Clinic',
@@ -857,6 +878,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-ent-2',
+    avatarUrl: '/doctors/doc-ent-2.jpg',
     name: 'Dr. Lakshmi Narayanan',
     clinicId: 'che-2',
     clinicName: 'Adyar Coast Medical Centre',
@@ -877,6 +899,7 @@ export const DOCTORS: Doctor[] = [
   // Pediatrics
   {
     id: 'doc-ped-1',
+    avatarUrl: '/doctors/doc-ped-1.jpg',
     name: 'Dr. Pallavi Sengupta',
     clinicId: 'kol-3',
     clinicName: 'New Town Apex MediCenter',
@@ -895,6 +918,7 @@ export const DOCTORS: Doctor[] = [
   },
   {
     id: 'doc-ped-2',
+    avatarUrl: '/doctors/doc-ped-2.jpg',
     name: 'Dr. Shilpa Hegde',
     clinicId: 'blr-2',
     clinicName: 'Koramangala Medical Guild',

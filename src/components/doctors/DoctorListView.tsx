@@ -157,10 +157,10 @@ export const DoctorListView: React.FC<DoctorListViewProps> = ({
                 <div className="flex items-start gap-3.5">
                   <div className="relative">
                     <img
-                      src={doc.avatarUrl}
+                      src={doc.avatarUrl || `/doctors/${doc.id}.jpg`}
                       alt={doc.name}
                       referrerPolicy="no-referrer"
-                      className="h-16 w-16 rounded-2xl object-cover bg-zinc-100 border border-zinc-200 shrink-0"
+                      className="h-16 w-16 rounded-2xl object-cover bg-zinc-100 border border-zinc-200 shrink-0 aspect-square"
                     />
                     <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-teal-600 text-white text-[10px]">
                       ✓
@@ -276,10 +276,10 @@ export const DoctorListView: React.FC<DoctorListViewProps> = ({
 
             <div className="mt-4 flex items-center gap-4">
               <img
-                src={viewingProfile.avatarUrl}
+                src={viewingProfile.avatarUrl || `/doctors/${viewingProfile.id}.jpg`}
                 alt={viewingProfile.name}
                 referrerPolicy="no-referrer"
-                className="h-20 w-20 rounded-2xl object-cover bg-zinc-100 border border-zinc-200"
+                className="h-20 w-20 rounded-2xl object-cover bg-zinc-100 border border-zinc-200 shrink-0 aspect-square"
               />
               <div>
                 <h3 className="text-lg font-bold text-zinc-900 font-['Space_Grotesk']">

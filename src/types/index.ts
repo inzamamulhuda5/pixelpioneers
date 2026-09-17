@@ -154,14 +154,29 @@ export interface Doctor {
 
 export type SlotPeriod = 'morning' | 'afternoon' | 'evening';
 
+export type SlotStatus =
+  | 'AVAILABLE'
+  | 'HELD'
+  | 'BOOKED'
+  | 'UNAVAILABLE'
+  | 'EXPIRED'
+  | 'available'
+  | 'held'
+  | 'booked'
+  | 'unavailable'
+  | 'expired';
+
 export interface AppointmentSlot {
   id: string;
   doctorId: string;
   date: string; // YYYY-MM-DD
-  time: string; // e.g. "09:30 AM"
+  time: string; // e.g. "06:00 PM"
   period: SlotPeriod;
-  status: 'available' | 'reserved' | 'booked';
-  reservedAt?: number;
+  status: SlotStatus;
+  heldUntil?: number;
+  heldByMe?: boolean;
+  heldByLabel?: string;
+  unavailableReason?: string;
 }
 
 export type TimeSlot = AppointmentSlot;

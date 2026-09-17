@@ -63,7 +63,7 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({ onStartNewBookin
     setNewDate(dates[1] || dates[0]);
     const slots = getTimeSlotsForDate(appt.doctor.id, appt.clinic.id, dates[1] || dates[0]);
     setAvailableSlots(slots);
-    const firstFree = slots.find((s) => s.status === 'available');
+    const firstFree = slots.find((s) => s.status.toUpperCase() === 'AVAILABLE');
     setNewSlot(firstFree || null);
     setRescheduleError(null);
   };
@@ -73,7 +73,7 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({ onStartNewBookin
     setNewDate(d);
     const slots = getTimeSlotsForDate(reschedulingAppt.doctor.id, reschedulingAppt.clinic.id, d);
     setAvailableSlots(slots);
-    const firstFree = slots.find((s) => s.status === 'available');
+    const firstFree = slots.find((s) => s.status.toUpperCase() === 'AVAILABLE');
     setNewSlot(firstFree || null);
   };
 
@@ -182,10 +182,10 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({ onStartNewBookin
                   {/* Doctor & Clinic */}
                   <div className="flex items-start gap-3.5">
                     <img
-                      src={appt.doctor.avatarUrl}
+                      src={appt.doctor.avatarUrl || `/doctors/${appt.doctor.id}.jpg`}
                       alt={appt.doctor.name}
                       referrerPolicy="no-referrer"
-                      className="h-14 w-14 rounded-2xl object-cover border border-zinc-200 shrink-0"
+                      className="h-14 w-14 rounded-2xl object-cover border border-zinc-200 shrink-0 aspect-square"
                     />
 
                     <div>
@@ -371,14 +371,15 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({ onStartNewBookin
               </div>
             </div>
 
-            {/* Slots Picker */}
+            {/* Slots Picker with Real States */}
             <div className="mt-4">
               <label className="text-xs font-bold text-zinc-700 block mb-1.5">
                 Select New Time Slot
               </label>
-              <div className="grid grid-cols-3 gap-1.5 max-h-36 overflow-y-auto">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-44 overflow-y-auto pr-1">
                 {availableSlots.map((s) => {
-                  const isAvailable = s.status === 'available';
+                  const statusUpper = s.status.toUpperCase();
+                  const isAvailable = statusUpper === 'AVAILABLE';
                   const isSelected = newSlot?.id === s.id;
                   return (
                     <button
@@ -386,15 +387,38 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({ onStartNewBookin
                       type="button"
                       disabled={!isAvailable}
                       onClick={() => setNewSlot(s)}
-                      className={`rounded-lg py-1.5 px-2 text-xs font-semibold transition ${
+                      className={`flex flex-col rounded-lg py-1.5 px-2 text-xs font-semibold transition text-left ${
                         isSelected
-                          ? 'bg-teal-600 text-white font-bold'
+                          ? 'bg-teal-600 text-white font-bold shadow-2xs'
                           : isAvailable
-                          ? 'bg-zinc-50 border border-zinc-200 text-zinc-800 hover:border-teal-400'
-                          : 'bg-zinc-100 text-zinc-400 line-through cursor-not-allowed opacity-50'
+                          ? 'bg-zinc-50 border border-zinc-200 text-zinc-800 hover:border-teal-400 hover:bg-teal-50/50'
+                          : 'bg-zinc-100 text-zinc-400 cursor-not-allowed opacity-55'
                       }`}
                     >
-                      {s.time}
+                      <div className="flex items-center justify-between w-full">
+                        <span className={!isAvailable && statusUpper !== 'HELD' ? 'line-through' : ''}>
+                          {s.time}
+                        </span>
+                        <span
+                          className={`text-[9px] font-bold rounded px-1 py-0.2 ${
+                            isSelected
+                              ? 'bg-white/20 text-white'
+                              : isAvailable
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : statusUpper === 'HELD'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-zinc-200 text-zinc-600'
+                          }`}
+                        >
+                          {statusUpper === 'AVAILABLE'
+                            ? 'Free'
+                            : statusUpper === 'HELD'
+                            ? 'Held'
+                            : statusUpper === 'UNAVAILABLE'
+                            ? 'Unavail'
+                            : 'Booked'}
+                        </span>
+                      </div>
                     </button>
                   );
                 })}

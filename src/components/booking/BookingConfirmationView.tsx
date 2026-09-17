@@ -68,10 +68,10 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200 pb-4">
             <div className="flex items-center gap-3">
               <img
-                src={appointment.doctor.avatarUrl}
+                src={appointment.doctor.avatarUrl || `/doctors/${appointment.doctor.id}.jpg`}
                 alt={appointment.doctor.name}
                 referrerPolicy="no-referrer"
-                className="h-12 w-12 rounded-xl object-cover border border-zinc-200 shrink-0"
+                className="h-12 w-12 rounded-xl object-cover border border-zinc-200 shrink-0 aspect-square"
               />
               <div>
                 <span className="font-bold text-zinc-900 text-sm">{appointment.doctor.name}</span>

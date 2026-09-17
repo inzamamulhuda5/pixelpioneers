@@ -13,8 +13,57 @@ const STORAGE_KEYS = {
   APPOINTMENTS: 'pixel_pioneers_appointments_v1',
   ASSESSMENTS: 'pixel_pioneers_assessments_v1',
   RESERVED_SLOTS: 'pixel_pioneers_reserved_slots_v1',
+  HELD_SLOTS: 'pixel_pioneers_held_slots_v2',
   BOOKED_SLOTS: 'pixel_pioneers_booked_slots_v1',
+  CLIENT_SESSION: 'pixel_pioneers_client_session_v1',
 };
+
+// Unique client session ID to identify holds belonging to current user
+export function getClientSessionId(): string {
+  try {
+    let sid = localStorage.getItem(STORAGE_KEYS.CLIENT_SESSION);
+    if (!sid) {
+      sid = 'session_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+      localStorage.setItem(STORAGE_KEYS.CLIENT_SESSION, sid);
+    }
+    return sid;
+  } catch {
+    return 'session_default';
+  }
+}
+
+interface HeldSlotRecord {
+  slotId: string;
+  sessionId: string;
+  heldAt: number;
+  expiresAt: number;
+  label?: string;
+}
+
+function getHeldSlotsMap(): Record<string, HeldSlotRecord> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.HELD_SLOTS);
+    const map: Record<string, HeldSlotRecord> = raw ? JSON.parse(raw) : {};
+    const now = Date.now();
+    const clean: Record<string, HeldSlotRecord> = {};
+    for (const [k, v] of Object.entries(map)) {
+      if (v && v.expiresAt > now) {
+        clean[k] = v;
+      }
+    }
+    return clean;
+  } catch {
+    return {};
+  }
+}
+
+function saveHeldSlotsMap(map: Record<string, HeldSlotRecord>): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.HELD_SLOTS, JSON.stringify(map));
+  } catch {
+    // Ignore storage issues
+  }
+}
 
 // Pricing rule calculation
 export function calculatePricing(
@@ -61,34 +110,82 @@ export function calculatePricing(
   };
 }
 
-// Generate realistic slots for a doctor across the next 5 days
+// Generate realistic slots for a doctor across the target date
 export function generateDoctorSlots(doctorId: string, targetDateStr: string): AppointmentSlot[] {
   const bookedSet = getBookedSlotKeys();
-  const reservedSet = getReservedSlotKeys();
+  const heldMap = getHeldSlotsMap();
+  const mySessionId = getClientSessionId();
+  const now = Date.now();
 
+  const todayStr = new Date().toISOString().split('T')[0];
+  const isToday = targetDateStr === todayStr;
+  const currentHour = new Date().getHours();
+  const currentMinute = new Date().getMinutes();
+
+  // Template times across Morning, Afternoon, and Evening
+  // Evening explicitly features 06:00 PM, 06:30 PM, 07:00 PM, 07:30 PM
   const timeTemplates = [
-    { time: '09:00 AM', period: 'morning' as const },
-    { time: '09:30 AM', period: 'morning' as const },
-    { time: '10:15 AM', period: 'morning' as const },
-    { time: '11:00 AM', period: 'morning' as const },
-    { time: '11:45 AM', period: 'morning' as const },
-    { time: '01:30 PM', period: 'afternoon' as const },
-    { time: '02:15 PM', period: 'afternoon' as const },
-    { time: '03:00 PM', period: 'afternoon' as const },
-    { time: '04:30 PM', period: 'afternoon' as const },
-    { time: '05:15 PM', period: 'evening' as const },
-    { time: '06:00 PM', period: 'evening' as const },
-    { time: '06:45 PM', period: 'evening' as const },
+    { time: '09:00 AM', period: 'morning' as const, hour: 9, min: 0 },
+    { time: '09:30 AM', period: 'morning' as const, hour: 9, min: 30 },
+    { time: '10:15 AM', period: 'morning' as const, hour: 10, min: 15 },
+    { time: '11:00 AM', period: 'morning' as const, hour: 11, min: 0 },
+    { time: '11:45 AM', period: 'morning' as const, hour: 11, min: 45 },
+    { time: '02:00 PM', period: 'afternoon' as const, hour: 14, min: 0 },
+    { time: '02:45 PM', period: 'afternoon' as const, hour: 14, min: 45 },
+    { time: '03:30 PM', period: 'afternoon' as const, hour: 15, min: 30 },
+    { time: '04:15 PM', period: 'afternoon' as const, hour: 16, min: 15 },
+    { time: '05:00 PM', period: 'evening' as const, hour: 17, min: 0 },
+    { time: '06:00 PM', period: 'evening' as const, hour: 18, min: 0 },
+    { time: '06:30 PM', period: 'evening' as const, hour: 18, min: 30 },
+    { time: '07:00 PM', period: 'evening' as const, hour: 19, min: 0 },
+    { time: '07:30 PM', period: 'evening' as const, hour: 19, min: 30 },
+    { time: '08:00 PM', period: 'evening' as const, hour: 20, min: 0 },
   ];
 
   return timeTemplates.map((t, idx) => {
     const slotId = `${doctorId}_${targetDateStr}_${idx}`;
-    let status: 'available' | 'reserved' | 'booked' = 'available';
+    let status: 'AVAILABLE' | 'HELD' | 'BOOKED' | 'UNAVAILABLE' | 'EXPIRED' = 'AVAILABLE';
+    let heldUntil: number | undefined;
+    let heldByMe = false;
+    let heldByLabel: string | undefined;
+    let unavailableReason: string | undefined;
 
-    if (bookedSet.has(slotId)) {
-      status = 'booked';
-    } else if (reservedSet.has(slotId)) {
-      status = 'reserved';
+    // Check if slot has expired in past hours of today
+    if (isToday && (t.hour < currentHour || (t.hour === currentHour && t.min < currentMinute - 10))) {
+      status = 'EXPIRED';
+    } else if (bookedSet.has(slotId)) {
+      status = 'BOOKED';
+    } else if (heldMap[slotId] && heldMap[slotId].expiresAt > now) {
+      status = 'HELD';
+      heldUntil = heldMap[slotId].expiresAt;
+      if (heldMap[slotId].sessionId === mySessionId) {
+        heldByMe = true;
+        heldByLabel = 'Held for you';
+      } else {
+        heldByMe = false;
+        heldByLabel = 'Held by patient';
+      }
+    } else {
+      // Deterministic clinic simulation for authenticity:
+      // Doctor on inpatient OT rounds at 03:30 PM (idx 7)
+      if (idx === 7) {
+        status = 'UNAVAILABLE';
+        unavailableReason = 'Inpatient OT / Hospital Rounds';
+      } else if (idx === 12) {
+        // 07:00 PM Booked by another clinic patient
+        status = 'BOOKED';
+      } else if (idx === 11) {
+        // 06:30 PM Held by another patient at clinic registration desk
+        status = 'HELD';
+        heldUntil = now + 180 * 1000; // 3 min remaining
+        heldByMe = false;
+        heldByLabel = 'Held by patient';
+      } else if (idx === 2) {
+        // 10:15 AM Booked
+        status = 'BOOKED';
+      } else {
+        status = 'AVAILABLE';
+      }
     }
 
     return {
@@ -98,6 +195,10 @@ export function generateDoctorSlots(doctorId: string, targetDateStr: string): Ap
       time: t.time,
       period: t.period,
       status,
+      heldUntil,
+      heldByMe,
+      heldByLabel,
+      unavailableReason,
     };
   });
 }
@@ -111,50 +212,68 @@ function getBookedSlotKeys(): Set<string> {
   }
 }
 
-function getReservedSlotKeys(): Set<string> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.RESERVED_SLOTS);
-    const map: Record<string, number> = raw ? JSON.parse(raw) : {};
-    const now = Date.now();
-    const active = new Set<string>();
-    // Clean expired reservations (> 5 minutes)
-    for (const [key, ts] of Object.entries(map)) {
-      if (now - ts < 5 * 60 * 1000) {
-        active.add(key);
-      }
-    }
-    return active;
-  } catch {
-    return new Set();
-  }
-}
-
-// Temporary slot reservation (Available -> Temporarily Reserved)
-export function temporarilyReserveSlot(slotId: string): { success: boolean; message?: string } {
+// Temporarily hold a slot (e.g. 5 minutes countdown)
+export function temporarilyReserveSlot(
+  slotId: string,
+  durationSeconds: number = 300
+): { success: boolean; heldUntil?: number; message?: string } {
   const booked = getBookedSlotKeys();
   if (booked.has(slotId)) {
-    return { success: false, message: 'This slot was just booked by another patient. Please choose another slot.' };
+    return {
+      success: false,
+      message: 'This slot was just booked by another patient. Please choose an available slot.',
+    };
   }
 
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.RESERVED_SLOTS);
-    const map: Record<string, number> = raw ? JSON.parse(raw) : {};
-    map[slotId] = Date.now();
-    localStorage.setItem(STORAGE_KEYS.RESERVED_SLOTS, JSON.stringify(map));
-    return { success: true };
-  } catch {
-    return { success: true };
+  const heldMap = getHeldSlotsMap();
+  const mySessionId = getClientSessionId();
+  const existing = heldMap[slotId];
+
+  if (existing && existing.expiresAt > Date.now() && existing.sessionId !== mySessionId) {
+    return {
+      success: false,
+      message: 'This slot is currently held by another patient. Please choose another available slot.',
+    };
   }
+
+  // Release any other slot previously held by THIS session so only 1 slot is held at a time
+  for (const [k, v] of Object.entries(heldMap)) {
+    if (v.sessionId === mySessionId && k !== slotId) {
+      delete heldMap[k];
+    }
+  }
+
+  const expiresAt = Date.now() + durationSeconds * 1000;
+  heldMap[slotId] = {
+    slotId,
+    sessionId: mySessionId,
+    heldAt: Date.now(),
+    expiresAt,
+    label: 'Held for you',
+  };
+
+  saveHeldSlotsMap(heldMap);
+  return { success: true, heldUntil: expiresAt };
 }
 
-// Release reservation
-export function releaseReservation(slotId: string): void {
+// Release a temporary hold
+export function releaseReservation(slotId?: string): void {
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.RESERVED_SLOTS);
-    if (!raw) return;
-    const map: Record<string, number> = JSON.parse(raw);
-    delete map[slotId];
-    localStorage.setItem(STORAGE_KEYS.RESERVED_SLOTS, JSON.stringify(map));
+    const heldMap = getHeldSlotsMap();
+    const mySessionId = getClientSessionId();
+    if (slotId) {
+      if (heldMap[slotId]?.sessionId === mySessionId) {
+        delete heldMap[slotId];
+        saveHeldSlotsMap(heldMap);
+      }
+    } else {
+      for (const [k, v] of Object.entries(heldMap)) {
+        if (v.sessionId === mySessionId) {
+          delete heldMap[k];
+        }
+      }
+      saveHeldSlotsMap(heldMap);
+    }
   } catch {
     // Ignore
   }
@@ -173,9 +292,11 @@ export function confirmBooking(
     };
   }
 
-  // Mark slot as booked
+  // Mark slot as permanently booked
   booked.add(slotId);
   localStorage.setItem(STORAGE_KEYS.BOOKED_SLOTS, JSON.stringify(Array.from(booked)));
+
+  // Release the temporary hold
   releaseReservation(slotId);
 
   const appointment: Appointment = {
@@ -195,7 +316,22 @@ export function confirmBooking(
 export function getAllAppointments(): Appointment[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.APPOINTMENTS);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const appointments: Appointment[] = JSON.parse(raw);
+      return appointments.map((appt) => {
+        if (!appt.doctor?.avatarUrl && appt.doctor?.id) {
+          const match = DOCTORS.find((d) => d.id === appt.doctor.id);
+          return {
+            ...appt,
+            doctor: {
+              ...appt.doctor,
+              avatarUrl: match?.avatarUrl || `/doctors/${appt.doctor.id}.jpg`,
+            },
+          };
+        }
+        return appt;
+      });
+    }
 
     // Initial default demo appointment for immediate rich UI testing
     const defaultAppointment: Appointment = {
