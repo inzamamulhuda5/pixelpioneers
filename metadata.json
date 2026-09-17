@@ -1,0 +1,10 @@
+{
+  "name": "Pixel Pioneers",
+  "description": "AI-powered patient intake, medical triage, clinic discovery, and appointment booking platform.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
