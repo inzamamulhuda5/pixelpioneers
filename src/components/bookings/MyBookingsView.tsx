@@ -20,6 +20,7 @@ import {
   cancelAppointment,
   getAllAppointments,
   getAvailableDates,
+  fetchTimeSlotsForDate,
   getTimeSlotsForDate,
   rescheduleAppointment,
 } from '../../services/bookingStore';
@@ -57,21 +58,22 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({ onStartNewBookin
   });
 
   // Open Reschedule Modal
-  const handleOpenReschedule = (appt: Appointment) => {
+  const handleOpenReschedule = async (appt: Appointment) => {
     const dates = getAvailableDates();
     setReschedulingAppt(appt);
-    setNewDate(dates[1] || dates[0]);
-    const slots = getTimeSlotsForDate(appt.doctor.id, appt.clinic.id, dates[1] || dates[0]);
+    const targetDate = dates[1] || dates[0];
+    setNewDate(targetDate);
+    const slots = await fetchTimeSlotsForDate(appt.doctor.id, appt.clinic.id, targetDate);
     setAvailableSlots(slots);
     const firstFree = slots.find((s) => s.status.toUpperCase() === 'AVAILABLE');
     setNewSlot(firstFree || null);
     setRescheduleError(null);
   };
 
-  const handleDateChangeInReschedule = (d: string) => {
+  const handleDateChangeInReschedule = async (d: string) => {
     if (!reschedulingAppt) return;
     setNewDate(d);
-    const slots = getTimeSlotsForDate(reschedulingAppt.doctor.id, reschedulingAppt.clinic.id, d);
+    const slots = await fetchTimeSlotsForDate(reschedulingAppt.doctor.id, reschedulingAppt.clinic.id, d);
     setAvailableSlots(slots);
     const firstFree = slots.find((s) => s.status.toUpperCase() === 'AVAILABLE');
     setNewSlot(firstFree || null);
